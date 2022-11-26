@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Windows",
+            "includePath": [
+                "${workspaceFolder}/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "LEYENGINE_CORE_MODULE"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
+            "compilerPath": "${workspaceFolder}/../../Editor/Build/Windows/LLVM/bin/clang++",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
