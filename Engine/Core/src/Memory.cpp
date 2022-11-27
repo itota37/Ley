@@ -4,6 +4,7 @@
 
 #include <mutex>
 #ifdef LEYENGINE_CORE_MODULE
+#include <new>
 #endif
 #include "LeyEngine/Memory.hpp"
 
@@ -18,40 +19,118 @@ using namespace LeyEngine;
 // ====================
 
 template<USize SIZE>
-struct MemoryPool
+class MemoryPool
 {
-    USize maxCount;
-    USize freeCount;
-    U8 *buffer;
-    USize rangeMin;
-    USize rangeMax;
-    U8 **listTop;
+    USize m_elementsCount;     // プールが管理するすべての要素数
+    U8 *m_pBuffer;             // バッファ
+    USize m_bufferRangeMin;    // バッファの最小アドレス
+    USize m_bufferRangeMax;    // バッファの最大アドレス
+    USize m_freeElementsCount; // 使用可能な要素数
+    U8 **m_ppListTop;
 
-    MemoryPool(USize count)
-        : maxCount(count)
-        , freeCount(count)
-        , buffer(Cast<U8*>(std::malloc(SIZE * count)))
+    // コンストラクタ
+    // 引数 count 要素数
+    // 引数 buffer SIZE * count 分のバッファ
+    MemoryPool(USize count, U8* buffer) noexcept
+        : m_elementsCount(count)
+        , m_pBuffer(buffer)
+        , m_freeElementsCount(this->m_elementsCount)
+        , m_ppListTop(NONE)
     {
-        Var first = Cast<USize>(&this->buffer[0]);
-        Var last = Cast<USize>(&this->buffer[(SIZE * count) - 1]);
-        this->rangeMin = first < last ? first : last;
-        this->rangeMax = first > last ? first : last;
+        // バッファの最小、最大アドレスを設定します
+        Var top = Cast<USize>(&this->m_buffer[0]);
+        Var end = Cast<USize>(&this->m_buffer[(SIZE * this->m_elementsCount)]);
+        this->m_bufferRangeMin = top < end ? top : end;
+        this->m_bufferRangeMax = top > end ? top : end;
 
-        // 要素のリストを作成します。
-    //
-    // m_bufferPointer [elem][elem][elem]...
-    //                 |  ^  |  ^  |  ^
-    //      nullptr <--'  '--'  '--'  '-- m_freeElementListTop
-    //
-    auto step = SIZE;
-    auto length = step * this->m_elementCount;
-    for (USize i = 0; i < length; i += step)
+        // 要素のリストを作成します
+        //
+        // m_pBuffer [elem][elem][elem]...
+        //            |  ^  |  ^  |  ^
+        //    NONE <--'  '--'  '--'  '-- m_ppListTop
+        //
+        auto step = SIZE;
+        auto length = step * this->m_elementsCount;
+        for (USize i = 0; i < length; i += step)
+        {
+            Var ptr = Cast<U8**>(&this->m_pBuffer[i]);
+            *ptr = Cast<U8*>(this->m_ppListTop);
+            this->m_freeElementListTop = ptr;
+        }
+    }
+
+public:
+
+    // 生成します。
+    static Result<MemoryPool<SIZE>*, EAllocateError> New(USize count) noexcept
     {
-        auto ptr = reinterpret_cast<U8**>(&this->m_bufferPointer[i]);
-        *ptr = reinterpret_cast<U8*>(this->m_freeElementListTop);
-        this->m_freeElementListTop = ptr;
+        Var ptr = std::malloc(sizeof(MemoryPool<SIZE>));
+        if (ptr == NONE) return EAllocateError::BAD_ALLOCATE;
+
+        Var buffer = Cast<U8*>(std::malloc(SIZE * count));
+        if (buffer == NONE) return EAllocateError::BAD_ALLOCATE;
+
+        return new(ptr) MemoryPool<SIZE>(count, buffer);
     }
+
+    // 削除します。
+    static Void Delete(MemoryPool<SIZE> *pool) noexcept
+    {
+        std::free(pool->m_pBuffer);
+        std::free(pool);
     }
+
+    // 要素を取得します。
+    Void *Allocate() noexcept
+    {
+        Var ptr = this->m_ppListTop;
+        this->m_freeElementsCount -= 1;
+        this->m_ppListTop = Cast<U8**>(*ptr);
+        return Cast<Void*>(ptr);
+    }
+
+    // 要素を戻します。
+    Bool Deallocate(Void *pointer) noexcept
+    {
+        Var ptr = Cast<U8**>(pointer);
+        Var adr = Cast<USize>(pointer);
+        if (this->m_bufferRangeMin <= adr && adr < this->m_bufferRangeMax)
+        {
+            this->m_freeElementsCount += 1;
+            *ptr = Cast<U8*>(this->m_ppListTop);
+            this->m_ppListTop = ptr;
+        }
+        else
+        {
+            return NO;
+        }
+    }
+
+    // 使用可能な要素が無いか判定します。
+    Bool IsEmpty() const noexcept
+    {
+        return this->m_freeElementsCount == 0;
+    }
+
+    // すべての要素が使用されていないか判定します。
+    Bool IsFull() const noexcept 
+    {
+        return this->m_freeElementsCount == this->m_elementsCount;
+    }
+};
+
+// --------------------
+//
+// 同サイズメモリマネージャ
+//
+// ====================
+
+template<USize SIZE>
+class MemoryPoolManager
+{
+    USize m_poolCount;                  // プールの
+    MemoryPool **m_ppMemoryPools;
+    USize m_allocatableMemoryPoolIndex;
 };
 
 // 標準メモリからメモリを確保します。

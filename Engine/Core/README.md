@@ -8,11 +8,11 @@ LeyEngineのコア機能を提供するモジュール、及び、インタフ�
  │  ├ [Debug]
  │  ├ [Library]
  │  │  ├ [Windows] x64構成のみ
- │  │  │  ├ [Other] Core以外のモジュール用ビルド結果
- │  │  │  └ [Core] Coreモジュール用ビルド結果
+ │  │  │  └ [Core.lib]
  │  │  :
  │  └ [Module]
  │     ├ [Windows] x64構成のみ
+ │     │  └ [Core.dll]
  │     :
  ├ [include]
  │  ├ [XXX.h]
@@ -65,4 +65,8 @@ core --> |ロード　システム接続| cl2;
 |iOS      |Core.so |
 
 # ビルド
-LEYENGINE_CORE_MODULEシンボルでライブラリとモジュールの仕様を分けます。
+ソースファイルの位置は変えず、シンボル定義で振り分けます。
+|シンボル|対象|
+|:------|:---|
+|LEYENGINE_CORE_MODULE|コアモジュール|
+|LEYENGINE_TEST|モジュール単体テスト|

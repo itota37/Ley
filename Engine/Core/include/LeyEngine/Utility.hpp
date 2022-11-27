@@ -109,6 +109,93 @@ namespace LeyEngine
                 return dynamic_cast<T>(Forward(value))
             }
         };
+
+        /// 複数の型で最も大きいの型サイズを返す関数オブジェクト特殊化です。
+        template<typename T, typename U, typename...Ts>
+        struct _MaxSizeOf
+        {
+            static constexpr USize MAX_SIZE = sizeof(T) > sizeof(U) ? _MaxSizeOf<T, Ts...>::MAX_SIZE : _MaxSizeOf<U, Ts...>::MAX_SIZE;
+        };
+        
+        /// 複数の型で最も大きいの型サイズを返す関数オブジェクトのTs=Void特殊化です。
+        template<typename T, typename U>
+        struct _MaxSizeOf<T, U, Void>
+        {
+            static constexpr USize MAX_SIZE = sizeof(T) > sizeof(U) ? sizeof(T) : sizeof(U);
+        };
+
+        /// 複数の型で最も大きいの型サイズを返す関数オブジェクトのU=Void特殊化です。
+        template<typename T>
+        struct _MaxSizeOf<T, Void, Void>
+        {
+            static constexpr USize MAX_SIZE = sizeof(T);
+        };
+
+        /// 可変長テンプレートから指定の型の位置を求める関数オブジェクト特殊化です。
+        template<typename T, typename U, typename...Ts>
+        struct _TypeIndexOf
+        {
+            /// 位置を求めます。
+            /// @param index 求めた位置です。
+            /// @return 存在したかどうかの判定値です。
+            Bool operator()(USize &index) const noexcept
+            {
+                if (typeid(T) == typeid(U))
+                {
+                    return YES;
+                }
+                else
+                {
+                    return _TypeIndexOf<T, Ts...>{}(++index);
+                }
+            }
+        };
+
+        /// 可変長テンプレートから指定の型の位置を求める関数オブジェクトのTs=Void特殊化です。
+        template<typename T, typename U>
+        struct _TypeIndexOf<T, U, Void>
+        {
+            /// 位置を求めます。
+            /// @param index 求めた位置です。
+            /// @return 存在したかどうかの判定値です。
+            Bool operator()(USize &index) const noexcept
+            {
+                if (typeid(T) == typeid(U))
+                {
+                    return YES;
+                }
+                else
+                {
+                    return NO;
+                }
+            }
+        };
+
+        /// 指定位置の型を返す関数オブジェクト特殊化です。
+        template<USize I, typename T, typename...Ts>
+        struct _TypeAt
+        {
+            /// 指定位置の型です。
+            using TTarget = _TypeAt<I - 1, T, Ts...>::TTarget;
+        };
+
+        /// 指定位置の型を返す関数オブジェクトのI=0特殊化です。
+        template<typename T, typename...Ts>
+        struct _TypeAt<0, T, Ts...>
+        {
+            /// 指定位置の型です。
+            using TTarget = T;
+        };
+
+        /// 指定位置の型を返す関数オブジェクトのT=Void特殊化です。
+        template<USize I>
+        struct _TypeAt<I, Void, Void>
+        {
+            static_assert(NO, "Out of range.");
+
+            /// 指定位置の型です。
+            using TTarget = Void;
+        };
     }
     /// @endcond
 
@@ -136,8 +223,9 @@ namespace LeyEngine
     /// @tparam S 成功時の型です。
     /// @tparam F 失敗時の型です。
     template<typename S, typename F>
-    class Result
+    struct Result
     {
+    private:
         union UResult
         {
             U8 ready;   // 初期値
@@ -242,6 +330,130 @@ namespace LeyEngine
             {
                 failure = Move(this->m_value.failure);
                 return NO;
+            }
+        }
+    };
+
+    /// 複数の型で最も大きいの型サイズを返します。
+    template<typename...Ts>
+    constexpr USize MaxSizeOf() noexcept
+    {
+        return _Internal::_MaxSizeOf<Ts...>::MAX_SIZE;
+    }
+
+    /// 可変長テンプレートから指定の型の位置を求めます。
+    template<typename T, typename...Ts>
+    Result<USize, None> TypeIndexOf() noexcept
+    {
+        USize index = 0;
+        if (_Internal::_TypeIndexOf<T, Ts...>{}(index))
+        {
+            return index;
+        }
+        else
+        {
+            return NONE;
+        }
+    }
+
+    /// 指定位置の型を返します。
+    template<USize I, typename...Ts>
+    using TypeAt = _Internal::_TypeAt<I,Ts...>::TTarget;
+
+    /// どれか1つの型を保持します。
+    template<typename...Ts>
+    struct Variant
+    {
+        /// 値を保持するバッファのサイズです。
+        static constexpr SIZE = MaxSizeOf<Ts...>();
+
+    private:
+
+        USize m_activeIndex; // 現在有能な値の型を表す数値です。
+        U8 m_buffer[MaxSizeOf<Ts...>()];   // バッファです。
+    
+    public:
+
+        /// コンストラクタです。
+        Variant()
+            : m_activeIndex(SIZE)
+        {}
+
+        /// 値を代入します。
+        /// @tparam U 代入する値の型です。
+        /// @param value 代入する値です。
+        /// @return 自身、または、失敗です。
+        template<typename U>
+        Result<Variant<Ts...>&, Failure> operator=(U &&value) noexcept
+        {
+            USize index = 0;
+            Var res = TypeIndexOf<U, Ts...>();
+            if (res.IsSuccess(index))
+            {
+                this->m_activeIndex = index;
+                Var ptr = Cast<U*>(this->m_buffer);
+                *ptr = Move(value);
+                return *this;
+            }
+            else
+            {
+                return FAILURE;
+            }
+        }
+
+        /// ムーブ代入します。
+        /// @param origin ムーブ元です。
+        /// @return 自身です。
+        Variant<Ts...> &operator=(Variant<Ts...> &&origin) noexcept
+        {
+            if (this != origin)
+            {
+                // 交換します
+
+                Var tmpIndex = this->m_activeIndex;
+                U8 tmpBuffer[MaxSizeOf<Ts...>()];
+                for (USize i = 0; i < SIZE; i++)
+                {
+                    tmpBuffer[i] = this->m_buffer[i];
+                }
+                
+                this->m_activeIndex = origin.m_activeIndex;
+                for (USize i = 0; i < SIZE; i++)
+                {
+                    this->m_buffer[i] = origin.m_buffer[i];
+                }
+
+                origin.m_activeIndex = tmpIndex;
+                for (USize i = 0; i < SIZE; i++)
+                {
+                    origin.m_buffer[i] = tmpBuffer[i];
+                }
+            }
+            return *this;
+        }
+
+        /// ムーブします。
+        /// @param origin ムーブ元です。
+        Variant(Variant<Ts...> &&origin) noexcept
+        {
+            *this = Move(origin);
+        }
+
+        /// 指定位置の型が有効な場合に返します。
+        /// @tparam I 指定位置です。
+        /// @return 値、または、失敗です。
+        template<USize I>
+        Result<TypeAt<I, Ts...>&&, Failure> At() noexcept
+        {
+            if (this->m_activeIndex == TypeIndexOf<TypeAt<I, Ts...>, Ts...>())
+            {
+                Var ptr = Cast<TypeAt<I, Ts...>*>(this->m_buffer);
+                this->m_activeIndex = SIZE;
+                return Move(*ptr);
+            }
+            else
+            {
+                return FAILURE;
             }
         }
     };

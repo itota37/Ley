@@ -1,7 +1,7 @@
 /// @file LeyEngine/Memory.hpp
 /// @copyright (C) 2022 LeyCommunity.
 /// @author Taichi Ito.
-/// 基本型を提供します。
+/// メモリを提供します。
 #ifndef _LEYENGINE_MEMORY_HPP
 #define _LEYENGINE_MEMORY_HPP
 
@@ -42,9 +42,16 @@ namespace LeyEngine
     /// 標準メモリアロケータです。
     /// @tparam T 要素の型です。
     template<typename T>
-    class Allocator
+    struct Allocator
     {
-    public:
+        /// 要素の型です。
+        using TElement = T;
+
+        /// メモリ確保時のエラー型です。
+        using TAllocateError = EAllocateError;
+
+        /// メモリ解放時のエラー型です。
+        using TDeallocateError = EDeallocateError;
 
         /// コンストラクタです。
         Allocator()
@@ -52,24 +59,24 @@ namespace LeyEngine
 
         /// コピーコンストラクタです。
         /// @param origin コピー元です。
-        Allocator(const Allocator<T> &origin) noexcept
+        Allocator(const Allocator<TElement> &origin) noexcept
         {}
 
         /// ムーブコンストラクタです。
         /// @param origin ムーブ元です。
-        Allocator(Allocator<T> &&origin) noexcept
+        Allocator(Allocator<TElement> &&origin) noexcept
         {}
 
         /// コピー代入します。
         /// @param origin コピー元です。
-        Allocator<T> &operator=(const Allocator<T> &origin) noexcept
+        Allocator<TElement> &operator=(const Allocator<TElement> &origin) noexcept
         {
             return this;
         }
 
         /// ムーブ代入します。
         /// @param origin ムーブ元です。
-        Allocator<T> &operator=(Allocator<T> &&origin) noexcept
+        Allocator<TElement> &operator=(Allocator<TElement> &&origin) noexcept
         {
             return this;
         }
@@ -77,14 +84,14 @@ namespace LeyEngine
         /// メモリを確保します。
         /// @param count 要素数です。
         /// @return 確保したポインタ、または、エラーです。
-        Result<T*, EAllocateError> Allocate(USize count) noexcept
+        Result<TElement*, TAllocateError> Allocate(USize count) noexcept
         {
-            Var res = LeyEngine::Allocate(sizeof(T) * count);
+            Var res = LeyEngine::Allocate(sizeof(TElement) * count);
             Void *ptr;
-            EAllocateError err;
+            TAllocateError err;
             if (res.IsSuccess(ptr, err))
             {
-                return Cast<T*>(ptr);
+                return Cast<TElement*>(ptr);
             }
             else
             {
@@ -96,10 +103,10 @@ namespace LeyEngine
         /// @param count 要素数です。
         /// @param pointer 解放するポインタです。
         /// @return SUCCESS、または、エラーです。
-        Result<Success, EDeallocateError> Deallocate(USize count, T *pointer) noexcept
+        Result<Success, TDeallocateError> Deallocate(USize count, TElement *pointer) noexcept
         {
             Var ptr = Cast<Void*>(pointer);
-            return LeyEngine::Deallocate(sizeof(T) * count, ptr);
+            return LeyEngine::Deallocate(sizeof(TElement) * count, ptr);
         }
     };
 }
